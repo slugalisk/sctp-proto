@@ -1,5 +1,7 @@
 # Unreleased
 
+  * Add `Stream::unsent_amount`, a stream's queued data not yet sent
+
 # 0.10.6
 
   * Fix TSN wraparound panics and incorrect SACK gap offsets at sequence-number boundaries #65

@@ -519,6 +519,50 @@ fn test_assoc_reliable_simple() -> Result<()> {
 }
 
 #[test]
+fn test_assoc_unsent_amount_leaves_out_data_in_flight() -> Result<()> {
+    let si: u16 = 1;
+    // More than the initial congestion window, so part of it waits.
+    let msg = Bytes::from(vec![7u8; 20_000]);
+
+    let (mut pair, client_ch, server_ch) = create_association_pair(AckMode::NoDelay, 0)?;
+    establish_session_pair(&mut pair, client_ch, server_ch, si)?;
+
+    pair.client_stream(client_ch, si)?
+        .write_sctp(&msg, PayloadProtocolIdentifier::Binary)?;
+    {
+        let s = pair.client_stream(client_ch, si)?;
+        assert_eq!(msg.len(), s.unsent_amount()?, "nothing is sent yet");
+        assert_eq!(msg.len(), s.buffered_amount()?, "incorrect bufferedAmount");
+    }
+
+    // The client sends what its window allows; nothing is acknowledged yet,
+    // so all of it stays buffered, and only what the window held back is
+    // unsent.
+    pair.drive_client();
+    {
+        let s = pair.client_stream(client_ch, si)?;
+        let (unsent, buffered) = (s.unsent_amount()?, s.buffered_amount()?);
+        assert_eq!(msg.len(), buffered, "incorrect bufferedAmount");
+        assert!(unsent > 0, "the window should hold some data back");
+        assert!(
+            unsent < buffered,
+            "data in flight should not count as unsent"
+        );
+    }
+
+    pair.drive();
+    {
+        let s = pair.client_stream(client_ch, si)?;
+        assert_eq!(0, s.unsent_amount()?, "everything is sent");
+        assert_eq!(0, s.buffered_amount()?, "everything is acknowledged");
+    }
+
+    close_association_pair(&mut pair, client_ch, server_ch, si);
+
+    Ok(())
+}
+
+#[test]
 fn test_assoc_reliable_ordered_reordered() -> Result<()> {
     // let _guard = subscribe();
 

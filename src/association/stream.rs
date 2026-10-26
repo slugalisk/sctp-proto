@@ -415,6 +415,25 @@ impl<'a> Stream<'a> {
         }
     }
 
+    /// unsent_amount returns the number of bytes of data queued on this stream that the
+    /// association hasn't sent yet. Unlike buffered_amount, it doesn't count bytes sent and
+    /// waiting to be acknowledged: data leaves it when the congestion and receiver windows let
+    /// it out, as a TCP socket's unsent bytes do.
+    pub fn unsent_amount(&self) -> Result<usize> {
+        if self
+            .association
+            .streams
+            .contains_key(&self.stream_identifier)
+        {
+            Ok(self
+                .association
+                .pending_queue
+                .get_num_bytes_for_stream(self.stream_identifier))
+        } else {
+            Err(Error::ErrStreamClosed)
+        }
+    }
+
     /// buffered_amount_low_threshold returns the number of bytes of buffered outgoing data that is
     /// considered "low." Defaults to 0.
     pub fn buffered_amount_low_threshold(&self) -> Result<usize> {

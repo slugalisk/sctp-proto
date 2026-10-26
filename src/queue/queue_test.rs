@@ -387,6 +387,45 @@ fn test_pending_queue_push_and_pop() -> Result<()> {
 }
 
 #[test]
+fn test_pending_queue_bytes_per_stream() -> Result<()> {
+    let mut pq = PendingQueue::new();
+    for (tsn, stream) in [(0, 1), (1, 2), (2, 1)] {
+        pq.push(ChunkPayloadData {
+            stream_identifier: stream,
+            ..make_data_chunk(tsn, false, NO_FRAGMENT)
+        });
+    }
+    assert_eq!(
+        20,
+        pq.get_num_bytes_for_stream(1),
+        "stream 1 bytes mismatch"
+    );
+    assert_eq!(
+        10,
+        pq.get_num_bytes_for_stream(2),
+        "stream 2 bytes mismatch"
+    );
+    assert_eq!(0, pq.get_num_bytes_for_stream(3), "stream 3 bytes mismatch");
+
+    for remaining in [(10, 10), (10, 0), (0, 0)] {
+        let c = pq.peek().unwrap();
+        let (beginning_fragment, unordered) = (c.beginning_fragment, c.unordered);
+        assert!(pq.pop(beginning_fragment, unordered).is_some());
+        assert_eq!(
+            remaining,
+            (
+                pq.get_num_bytes_for_stream(1),
+                pq.get_num_bytes_for_stream(2)
+            ),
+            "bytes per stream mismatch"
+        );
+    }
+    assert_eq!(0, pq.get_num_bytes(), "total bytes mismatch");
+
+    Ok(())
+}
+
+#[test]
 fn test_pending_queue_unordered_wins() -> Result<()> {
     let mut pq = PendingQueue::new();
 

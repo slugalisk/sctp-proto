@@ -1,6 +1,7 @@
 use crate::chunk::chunk_payload_data::ChunkPayloadData;
 
 use alloc::collections::VecDeque;
+use rustc_hash::FxHashMap;
 
 /// pendingBaseQueue
 pub(crate) type PendingBaseQueue = VecDeque<ChunkPayloadData>;
@@ -12,6 +13,8 @@ pub(crate) struct PendingQueue {
     ordered_queue: PendingBaseQueue,
     queue_len: usize,
     n_bytes: usize,
+    /// User data bytes per stream identifier, for streams with any queued.
+    n_bytes_by_stream: FxHashMap<u16, usize>,
     selected: bool,
     unordered_is_selected: bool,
 }
@@ -23,6 +26,10 @@ impl PendingQueue {
 
     pub(crate) fn push(&mut self, c: ChunkPayloadData) {
         self.n_bytes += c.user_data.len();
+        *self
+            .n_bytes_by_stream
+            .entry(c.stream_identifier)
+            .or_default() += c.user_data.len();
         if c.unordered {
             self.unordered_queue.push_back(c);
         } else {
@@ -94,6 +101,12 @@ impl PendingQueue {
         if let Some(p) = &popped {
             self.n_bytes -= p.user_data.len();
             self.queue_len -= 1;
+            if let Some(n) = self.n_bytes_by_stream.get_mut(&p.stream_identifier) {
+                *n -= p.user_data.len();
+                if *n == 0 {
+                    self.n_bytes_by_stream.remove(&p.stream_identifier);
+                }
+            }
         }
 
         popped
@@ -101,6 +114,14 @@ impl PendingQueue {
 
     pub(crate) fn get_num_bytes(&self) -> usize {
         self.n_bytes
+    }
+
+    /// The user data bytes queued for one stream.
+    pub(crate) fn get_num_bytes_for_stream(&self, stream_identifier: u16) -> usize {
+        self.n_bytes_by_stream
+            .get(&stream_identifier)
+            .copied()
+            .unwrap_or(0)
     }
 
     pub(crate) fn len(&self) -> usize {
